@@ -49,5 +49,6 @@ export const server = createServer(async (req, res) => {
 })
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  server.listen(port, () => console.log(`Чат MAX: http://localhost:${port}`))
+  const host = process.env.HOST ?? '0.0.0.0' // на сервере HOST=127.0.0.1: наружу только через nginx
+  server.listen(port, host, () => console.log(`Чат MAX: http://${host}:${port}`))
 }
