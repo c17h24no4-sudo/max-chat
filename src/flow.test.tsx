@@ -82,3 +82,34 @@ describe('ChatApp', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('российский номер')
   })
 })
+
+describe('сбои получения уведомлений', () => {
+  it('единичный 502 от шлюза не показывает ошибку, повторы идут молча', async () => {
+    const { usePolling } = await import('./usePolling')
+    const { renderHook, waitFor: wf } = await import('@testing-library/react')
+    let calls = 0
+    const api: any = {
+      receive: async () => {
+        calls++
+        if (calls === 1) throw Object.assign(new Error('Ошибка GREEN-API (502).'), { status: 502 })
+        return null
+      },
+      deleteNotification: async () => ({ result: true }),
+    }
+    const errors: Array<string | null> = []
+    const { unmount } = renderHook(() => usePolling(api, () => {}, (m: string | null) => errors.push(m)))
+    await wf(() => expect(calls).toBeGreaterThanOrEqual(2), { timeout: 4000 })
+    unmount()
+    expect(errors.filter((e) => e)).toEqual([]) // ни одного сообщения об ошибке
+  })
+
+  it('неверный токен (401) показывается сразу', async () => {
+    const { usePolling } = await import('./usePolling')
+    const { renderHook, waitFor: wf } = await import('@testing-library/react')
+    const api: any = { receive: async () => { throw Object.assign(new Error('Неверный idInstance или apiTokenInstance.'), { status: 401 }) }, deleteNotification: async () => ({}) }
+    const errors: Array<string | null> = []
+    const { unmount } = renderHook(() => usePolling(api, () => {}, (m: string | null) => errors.push(m)))
+    await wf(() => expect(errors.some((e) => e && e.includes('Неверный'))).toBe(true), { timeout: 4000 })
+    unmount()
+  })
+})

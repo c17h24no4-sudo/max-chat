@@ -12,10 +12,12 @@ export function usePolling(api: GreenApi | null, dispatch: Dispatch<Action>, onE
     if (!api) return
     const ctrl = new AbortController()
     let alive = true
+    let failures = 0
     ;(async () => {
       while (alive) {
         try {
           const n = await api.receive(ctrl.signal, 5)
+          failures = 0
           onError(null)
           if (!n) continue
           const m = toText(n)
@@ -31,8 +33,13 @@ export function usePolling(api: GreenApi | null, dispatch: Dispatch<Action>, onE
           await api.deleteNotification(n.receiptId)
         } catch (e) {
           if ((e as Error).name === 'AbortError') return
-          onError((e as Error).message)
-          await new Promise((r) => setTimeout(r, 3000))
+          failures++
+          // единичные сбои шлюза (502, 504, обрыв) при долгом ожидании — норма: пробуем снова молча,
+          // предупреждение показываем, только если ошибки идут подряд или данные неверны
+          const status = (e as { status?: number }).status ?? 0
+          const transient = status === 0 || status >= 500
+          if (!transient || failures >= 4) onError((e as Error).message)
+          await new Promise((r) => setTimeout(r, transient ? 1000 : 3000))
         }
       }
     })()
